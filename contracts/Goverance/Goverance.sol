@@ -8,9 +8,12 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 /**
  * @title Governance
  * @notice Base governance contract with role-based access control (Upgradeable)
- * @dev Uses OpenZeppelin's upgradeable AccessControl with UUPS proxy pattern
  */
 contract Governance is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
+
+    // -------------------------
+    // ROLE CONSTANTS
+    // -------------------------
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
@@ -40,7 +43,7 @@ contract Governance is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     }
 
     // -------------------------
-    // INITIALIZATION (for proxy)
+    // INITIALIZATION
     // -------------------------
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -49,11 +52,11 @@ contract Governance is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
 
     function initialize(address _owner) public initializer {
         require(_owner != address(0), "Zero address");
-        
+
         __AccessControl_init();
         __UUPSUpgradeable_init();
-        
-        // Grant OWNER_ROLE to the owner
+
+        // Assign initial roles
         _grantRole(OWNER_ROLE, _owner);
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(UPGRADER_ROLE, _owner);
@@ -97,19 +100,19 @@ contract Governance is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     // -------------------------
     function transferOwnership(address _newOwner) external onlyOwner {
         require(_newOwner != address(0), "Zero address");
-        
+
         address _currentOwner = msg.sender;
-        
-        // Grant role to new owner
+
+        // Grant new owner roles
         grantRole(OWNER_ROLE, _newOwner);
         grantRole(DEFAULT_ADMIN_ROLE, _newOwner);
         grantRole(UPGRADER_ROLE, _newOwner);
-        
-        // Revoke from old owner
+
+        // Revoke from previous owner
         revokeRole(OWNER_ROLE, _currentOwner);
         revokeRole(DEFAULT_ADMIN_ROLE, _currentOwner);
         revokeRole(UPGRADER_ROLE, _currentOwner);
-        
+
         emit OwnershipTransferred(_currentOwner, _newOwner);
     }
 
@@ -129,12 +132,16 @@ contract Governance is Initializable, AccessControlUpgradeable, UUPSUpgradeable 
     }
 
     // -------------------------
-    // UPGRADE AUTHORIZATION
+    // UPGRADE CONTROL
     // -------------------------
-    function _authorizeUpgrade(address _newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
+    function _authorizeUpgrade(address _newImplementation)
+        internal
+        override
+        onlyRole(UPGRADER_ROLE)
+    {}
 
     // -------------------------
-    // STORAGE GAP (for future upgrades)
+    // STORAGE GAP
     // -------------------------
     uint256[50] private __gap;
 }

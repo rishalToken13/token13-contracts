@@ -11,8 +11,7 @@ interface IMerchantRegistry {
 
 /**
  * @title PaymentStorage
- * @notice Storage-only contract for payment-related persistent state. (Upgradeable)
- * @dev Contains NO LOGIC. Only state variables and initialize() pattern for proxy compatibility.
+ * @notice Upgradeable storage contract for payment-related state.
  */
 contract PaymentStorage is Initializable {
 
@@ -21,30 +20,25 @@ contract PaymentStorage is Initializable {
         _disableInitializers();
     }
 
-    // Set via PaymentCore, not constructor
-    IMerchantRegistry public merchantRegistry;
+    // Set via PaymentCore
+    IMerchantRegistry public merchantRegistry_;
 
     // -------------------------
     // BALANCES
     // -------------------------
-
-    // merchantId => TRX balance
-    mapping(uint256 => uint256) public merchantBalances;
-
-    // merchantId => token => balance
-    mapping(uint256 => mapping(address => uint256)) public merchantTokenBalances;
+    mapping(uint256 => uint256) public merchantBalances_;                // TRX balances
+    mapping(uint256 => mapping(address => uint256)) public merchantTokenBalances_;
 
     // -------------------------
     // TOKENS / INVOICES
     // -------------------------
+    mapping(address => bool) public allowedTokens_;
+    mapping(bytes32 => bool) public invoicePaid_;
 
-    mapping(address => bool) public allowedTokens;
-    mapping(bytes32 => bool) public invoicePaid;
+    mapping(address => uint256) public payerNonce_;
 
-    mapping(address => uint256) public payerNonce;
-
-    uint256 public totalMerchantTRXLocked;
-    mapping(address => uint256) public totalMerchantTokenLocked;
+    uint256 public totalMerchantTRXLocked_;
+    mapping(address => uint256) public totalMerchantTokenLocked_;
 
     // -------------------------
     // EVENTS
@@ -60,7 +54,6 @@ contract PaymentStorage is Initializable {
     );
 
     event Withdraw(uint256 indexed merchantId, address indexed payout, address token, uint256 amount);
-
     event TokenAllowed(address token, bool allowed);
     event RescueTRX(address indexed to, uint256 amount);
     event RescueToken(address indexed token, address indexed to, uint256 amount);

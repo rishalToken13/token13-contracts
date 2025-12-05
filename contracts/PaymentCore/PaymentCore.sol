@@ -2,14 +2,12 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-
 import "../MerchantRegistry/MerchantStorage.sol";
 
-
 /**
-* @title PaymentCore
-* @notice Payment logic. Inherits storage contracts. (Upgradeable)
-*/
+ * @title PaymentCore
+ * @notice Payment logic (Upgradeable)
+ */
 contract PaymentCore is MerchantStorage, ReentrancyGuardUpgradeable {
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -22,226 +20,278 @@ contract PaymentCore is MerchantStorage, ReentrancyGuardUpgradeable {
         __ReentrancyGuard_init();
     }
 
+    // -------------------------
+    // MODIFIERS
+    // -------------------------
+    modifier notPaused() {
+        require(!paused_, "Paused");
+        _;
+    }
 
-// -------------------------
-// MODIFIERS
-// -------------------------
-modifier notPaused() {
-require(!paused_, "Paused");
-_;
-}
+    modifier onlyMerchantPayout(uint256 _merchantId) {
+        require(msg.sender == merchantPayout_[_merchantId], "Not merchant payout");
+        _;
+    }
 
-
-modifier onlyMerchantPayout(uint256 merchantId) {
-require(msg.sender == merchantPayout[merchantId], "Not merchant payout");
-_;
-}
-
-
-// -------------------------
-// ADMIN
-// -------------------------
-function allowToken(address token, bool allowed) external onlyOwner {
-    require(token != address(0), "Zero");
-    require(_isContract(token), "Not contract");
-    allowedTokens[token] = allowed;
-    emit TokenAllowed(token, allowed);
-}
-
-
-// -------------------------
-// PAYMENTS (TRX)
-// -------------------------
-function payTRX(
-uint256 merchantId,
-string calldata invoiceId,
-string calldata orderId
-) external payable notPaused nonReentrant {
-    _validateStrings(invoiceId, orderId);
-    require(merchantPayout[merchantId] != address(0), "Not merchant");
-    require(msg.value > 0, "Zero TRX");
-
-
-    payerNonce[msg.sender]++;
-
-    bytes32 _hash = _invoiceHash(merchantId, invoiceId, orderId);
-    require(!invoicePaid[_hash], "Paid");
-
-    invoicePaid[_hash] = true;
-    merchantBalances[merchantId] += msg.value;
-    totalMerchantTRXLocked += msg.value;
-
-    emit PaymentReceived(merchantId, _hash, invoiceId, orderId, msg.sender, address(0), msg.value);
-}
-
-
-// -------------------------
-// PAYMENTS (TRC20)
-// -------------------------
-function payToken(
-address token,
-uint256 merchantId,
-string calldata invoiceId,
-string calldata orderId,
-uint256 amount
-) external notPaused nonReentrant {
-    _validateStrings(invoiceId, orderId);
-    require(allowedTokens[token], "Token NA");
-    require(merchantPayout[merchantId] != address(0), "Not merchant");
-    require(amount > 0, "Zero amount");
-
-
-    payerNonce[msg.sender]++;
-
-    bytes32 _hash = _invoiceHash(merchantId, invoiceId, orderId);
-    require(!invoicePaid[_hash], "Paid");
-
-    uint256 _received = _transferExact(token, msg.sender, amount);
-
-    invoicePaid[_hash] = true;
-    merchantTokenBalances[merchantId][token] += _received;
-    totalMerchantTokenLocked[token] += _received;
-
-    emit PaymentReceived(merchantId, _hash, invoiceId, orderId, msg.sender, token, _received);
-}
-
-
-// -------------------------
-// WITHDRAWALS
-// -------------------------
-function withdrawTRX(uint256 merchantId, uint256 amount)
-external
-nonReentrant
-onlyMerchantPayout(merchantId)
-{
-    uint256 _bal = merchantBalances[merchantId];
-
-    if (amount == 0) amount = _bal;
-
-
-    require(amount > 0, "Zero");
-    require(_bal >= amount, "Insufficient");
-
-    merchantBalances[merchantId] = _bal - amount;
-    totalMerchantTRXLocked -= amount;
-
-    (bool _ok, ) = msg.sender.call{value: amount}("");
-    require(_ok, "Transfer fail");
-
-    emit Withdraw(merchantId, msg.sender, address(0), amount);
-}
-
-
-function withdrawToken(address token, uint256 merchantId, uint256 amount)
-external
-    nonReentrant
-    onlyMerchantPayout(merchantId)
+    // -------------------------
+    // ADMIN
+    // -------------------------
+    function allowToken(address _token, bool _allowed)
+        external
+        onlyOwner
     {
-    uint256 _bal = merchantTokenBalances[merchantId][token];
-    if (amount == 0) amount = _bal;
+        require(_token != address(0), "Zero");
+        require(_isContract(_token), "Not contract");
 
-    require(amount > 0, "Zero");
-    require(_bal >= amount, "Insufficient");
+        allowedTokens_[_token] = _allowed;
+        emit TokenAllowed(_token, _allowed);
+    }
 
-    merchantTokenBalances[merchantId][token] = _bal - amount;
-    totalMerchantTokenLocked[token] -= amount;
-    _safeTransfer(token, msg.sender, amount);
+    // -------------------------
+    // PAYMENTS (TRX)
+    // -------------------------
+    function payTRX(
+        uint256 _merchantId,
+        string calldata _invoiceId,
+        string calldata _orderId
+    )
+        external
+        payable
+        notPaused
+        nonReentrant
+    {
+        _validateStrings(_invoiceId, _orderId);
+        require(merchantPayout_[_merchantId] != address(0), "Not merchant");
+        require(msg.value > 0, "Zero TRX");
 
-    emit Withdraw(merchantId, msg.sender, token, amount);
-}
+        payerNonce_[msg.sender]++;
 
-// -------------------------
-// RESCUE
-// -------------------------
-function rescueTRX(address payable to, uint256 amount)
-external
-onlyOwner
-nonReentrant
-{
-    require(to != address(0), "Zero");
-    require(amount > 0, "Zero");
+        bytes32 _hash = _invoiceHash(_merchantId, _invoiceId, _orderId);
+        require(!invoicePaid_[_hash], "Paid");
 
-    uint256 _bal = address(this).balance;
-    require(_bal >= totalMerchantTRXLocked, "Inconsistent balances");
+        invoicePaid_[_hash] = true;
+        merchantBalances_[_merchantId] += msg.value;
+        totalMerchantTRXLocked_ += msg.value;
 
-    uint256 _free = _bal - totalMerchantTRXLocked;
-    require(amount <= _free, "Merchant TRX locked");
+        emit PaymentReceived(
+            _merchantId,
+            _hash,
+            _invoiceId,
+            _orderId,
+            msg.sender,
+            address(0),
+            msg.value
+        );
+    }
 
-    (bool _ok, ) = to.call{value: amount}("");
-    require(_ok, "Fail");
+    // -------------------------
+    // PAYMENTS (TRC20)
+    // -------------------------
+    function payToken(
+        address _token,
+        uint256 _merchantId,
+        string calldata _invoiceId,
+        string calldata _orderId,
+        uint256 _amount
+    )
+        external
+        notPaused
+        nonReentrant
+    {
+        _validateStrings(_invoiceId, _orderId);
+        require(allowedTokens_[_token], "Token NA");
+        require(merchantPayout_[_merchantId] != address(0), "Not merchant");
+        require(_amount > 0, "Zero amount");
 
-    emit RescueTRX(to, amount);
-}
+        payerNonce_[msg.sender]++;
 
+        bytes32 _hash = _invoiceHash(_merchantId, _invoiceId, _orderId);
+        require(!invoicePaid_[_hash], "Paid");
 
-function rescueToken(address token, address to, uint256 amount)
-external
-onlyOwner
-nonReentrant
-{
-    require(token != address(0), "Zero");
-    require(to != address(0), "Zero");
-    require(amount > 0, "Zero");
+        uint256 _received = _transferExact(_token, msg.sender, _amount);
 
+        invoicePaid_[_hash] = true;
+        merchantTokenBalances_[_merchantId][_token] += _received;
+        totalMerchantTokenLocked_[_token] += _received;
 
-    uint256 bal = ITRC20(token).balanceOf(address(this));
-    uint256 locked = totalMerchantTokenLocked[token];
-    require(bal >= locked, "Inconsistent");
-    uint256 free = bal - locked;
-    require(amount <= free, "Locked to merchants");
+        emit PaymentReceived(
+            _merchantId,
+            _hash,
+            _invoiceId,
+            _orderId,
+            msg.sender,
+            _token,
+            _received
+        );
+    }
 
+    // -------------------------
+    // WITHDRAWALS
+    // -------------------------
+    function withdrawTRX(uint256 _merchantId, uint256 _amount)
+        external
+        nonReentrant
+        onlyMerchantPayout(_merchantId)
+    {
+        uint256 _bal = merchantBalances_[_merchantId];
 
-    _safeTransfer(token, to, amount);
+        if (_amount == 0) {
+            _amount = _bal;
+        }
 
+        require(_amount > 0, "Zero");
+        require(_bal >= _amount, "Insufficient");
 
-    emit RescueToken(token, to, amount);
-}
+        merchantBalances_[_merchantId] = _bal - _amount;
+        totalMerchantTRXLocked_ -= _amount;
 
-// -------------------------
-// HELPERS
-// -------------------------
-function _validateStrings(string calldata invoiceId, string calldata orderId) internal pure {
-require(bytes(invoiceId).length > 0 && bytes(invoiceId).length <= MAX_STRING_LENGTH, "Bad invoiceId");
-require(bytes(orderId).length > 0 && bytes(orderId).length <= MAX_STRING_LENGTH, "Bad orderId");
-}
+        (bool _ok, ) = msg.sender.call{value: _amount}("");
+        require(_ok, "Transfer fail");
 
+        emit Withdraw(_merchantId, msg.sender, address(0), _amount);
+    }
 
-function _safeTransferFrom(address token, address from, address to, uint256 amount) internal {
-(bool _ok, bytes memory _data) =
-token.call(abi.encodeWithSelector(ITRC20.transferFrom.selector, from, to, amount));
-require(_ok && (_data.length == 0 || abi.decode(_data, (bool))), "transferFrom fail");
-}
+    function withdrawToken(
+        address _token,
+        uint256 _merchantId,
+        uint256 _amount
+    )
+        external
+        nonReentrant
+        onlyMerchantPayout(_merchantId)
+    {
+        uint256 _bal = merchantTokenBalances_[_merchantId][_token];
 
+        if (_amount == 0) {
+            _amount = _bal;
+        }
 
-function _safeTransfer(address token, address to, uint256 amount) internal {
-(bool _ok, bytes memory _data) =
-token.call(abi.encodeWithSelector(ITRC20.transfer.selector, to, amount));
-require(_ok && (_data.length == 0 || abi.decode(_data, (bool))), "transfer fail");
-}
+        require(_amount > 0, "Zero");
+        require(_bal >= _amount, "Insufficient");
 
+        merchantTokenBalances_[_merchantId][_token] = _bal - _amount;
+        totalMerchantTokenLocked_[_token] -= _amount;
 
-function _transferExact(address token, address from, uint256 amount)
-internal
-returns (uint256 received)
-{
-    uint256 _beforeBal = ITRC20(token).balanceOf(address(this));
-    _safeTransferFrom(token, from, address(this), amount);
-    uint256 _afterBal = ITRC20(token).balanceOf(address(this));
-    received = _afterBal - _beforeBal;
-    require(received == amount, "Fee token not allowed");
-}
+        _safeTransfer(_token, msg.sender, _amount);
 
+        emit Withdraw(_merchantId, msg.sender, _token, _amount);
+    }
 
-function _invoiceHash(
-uint256 merchantId,
-string memory invoiceId,
-string memory orderId
-) internal pure returns (bytes32) {
-    return keccak256(abi.encode(merchantId, invoiceId, orderId));
-}
+    // -------------------------
+    // RESCUE
+    // -------------------------
+    function rescueTRX(address payable _to, uint256 _amount)
+        external
+        onlyOwner
+        nonReentrant
+    {
+        require(_to != address(0), "Zero");
+        require(_amount > 0, "Zero");
 
+        uint256 _bal = address(this).balance;
+        require(_bal >= totalMerchantTRXLocked_, "Inconsistent balances");
 
-function _isContract(address a) internal view returns (bool) {
-    return a.code.length > 0;
-}
+        uint256 _free = _bal - totalMerchantTRXLocked_;
+        require(_amount <= _free, "Merchant TRX locked");
+
+        (bool _ok, ) = _to.call{value: _amount}("");
+        require(_ok, "Fail");
+
+        emit RescueTRX(_to, _amount);
+    }
+
+    function rescueToken(address _token, address _to, uint256 _amount)
+        external
+        onlyOwner
+        nonReentrant
+    {
+        require(_token != address(0), "Zero");
+        require(_to != address(0), "Zero");
+        require(_amount > 0, "Zero");
+
+        uint256 _bal = ITRC20(_token).balanceOf(address(this));
+        uint256 _locked = totalMerchantTokenLocked_[_token];
+        require(_bal >= _locked, "Inconsistent");
+
+        uint256 _free = _bal - _locked;
+        require(_amount <= _free, "Locked to merchants");
+
+        _safeTransfer(_token, _to, _amount);
+
+        emit RescueToken(_token, _to, _amount);
+    }
+
+    // -------------------------
+    // HELPERS
+    // -------------------------
+    function _validateStrings(
+        string calldata _invoiceId,
+        string calldata _orderId
+    ) internal pure {
+        require(
+            bytes(_invoiceId).length > 0 &&
+            bytes(_invoiceId).length <= MAX_STRING_LENGTH,
+            "Bad invoiceId"
+        );
+        require(
+            bytes(_orderId).length > 0 &&
+            bytes(_orderId).length <= MAX_STRING_LENGTH,
+            "Bad orderId"
+        );
+    }
+
+    function _safeTransferFrom(
+        address _token,
+        address _from,
+        address _to,
+        uint256 _amount
+    ) internal {
+        (bool _ok, bytes memory _data) = _token.call(
+            abi.encodeWithSelector(
+                ITRC20.transferFrom.selector,
+                _from,
+                _to,
+                _amount
+            )
+        );
+        require(_ok && (_data.length == 0 || abi.decode(_data, (bool))), "transferFrom fail");
+    }
+
+    function _safeTransfer(address _token, address _to, uint256 _amount)
+        internal
+    {
+        (bool _ok, bytes memory _data) = _token.call(
+            abi.encodeWithSelector(
+                ITRC20.transfer.selector,
+                _to,
+                _amount
+            )
+        );
+        require(_ok && (_data.length == 0 || abi.decode(_data, (bool))), "transfer fail");
+    }
+
+    function _transferExact(address _token, address _from, uint256 _amount)
+        internal
+        returns (uint256 _received)
+    {
+        uint256 _before = ITRC20(_token).balanceOf(address(this));
+        _safeTransferFrom(_token, _from, address(this), _amount);
+        uint256 _after = ITRC20(_token).balanceOf(address(this));
+
+        _received = _after - _before;
+        require(_received == _amount, "Fee token not allowed");
+    }
+
+    function _invoiceHash(
+        uint256 _merchantId,
+        string memory _invoiceId,
+        string memory _orderId
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encode(_merchantId, _invoiceId, _orderId));
+    }
+
+    function _isContract(address _a) internal view returns (bool) {
+        return _a.code.length > 0;
+    }
+
 }
