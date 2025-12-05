@@ -1,26 +1,33 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import "../MerchantRegistry/MerchantStorage.sol";
-import "./PaymentStorage.sol";
 
 
 /**
 * @title PaymentCore
-* @notice Payment logic. Inherits storage contracts.
+* @notice Payment logic. Inherits storage contracts. (Upgradeable)
 */
-contract PaymentCore is MerchantStorage, PaymentStorage, ReentrancyGuard {
+contract PaymentCore is MerchantStorage, ReentrancyGuardUpgradeable {
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _owner) public override initializer {
+        MerchantStorage.initialize(_owner);
+        __ReentrancyGuard_init();
+    }
 
 
 // -------------------------
 // MODIFIERS
 // -------------------------
 modifier notPaused() {
-require(!paused, "Paused");
+require(!paused_, "Paused");
 _;
 }
 

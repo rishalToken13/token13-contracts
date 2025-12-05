@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-interface ITRC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 interface IMerchantRegistry {
     function isMerchant(address merchant) external view returns (bool);
@@ -15,10 +11,15 @@ interface IMerchantRegistry {
 
 /**
  * @title PaymentStorage
- * @notice Storage-only contract for payment-related persistent state.
- * @dev Contains NO LOGIC and NO CONSTRUCTOR. Only state variables.
+ * @notice Storage-only contract for payment-related persistent state. (Upgradeable)
+ * @dev Contains NO LOGIC. Only state variables and initialize() pattern for proxy compatibility.
  */
-contract PaymentStorage {
+contract PaymentStorage is Initializable {
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     // Set via PaymentCore, not constructor
     IMerchantRegistry public merchantRegistry;
