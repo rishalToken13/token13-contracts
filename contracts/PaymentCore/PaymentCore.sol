@@ -15,7 +15,7 @@ import { PaymentV1Storage } from "./Storage.sol";
 contract PaymentCoreV1 is Context, PaymentV1Storage {
 
 
-event PaymentCompleted(
+event PaymentDetected(
     bytes32 indexed merchantId,
     uint256 indexed orderId,
     uint256 indexed invoiceId,
@@ -155,7 +155,7 @@ function payTx(
         TokenUtils.pushTokens(_paymentToken, fundReceiver, merchantShare);
     }
 
-    emit PaymentCompleted(
+    emit PaymentDetected(
         merchantId_,
         orderId_,
         invoiceId_,
