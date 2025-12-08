@@ -15,14 +15,14 @@ import { PaymentV1Storage } from "./Storage.sol";
 contract PaymentCoreV1 is Context, PaymentV1Storage {
 
 
-  event PaymentCompleted(
+event PaymentCompleted(
     bytes32 indexed merchantId,
     uint256 indexed orderId,
     uint256 indexed invoiceId,
     IERC20Upgradeable paymentToken,
     uint256 amount,
     uint256 timestamp
-  );
+);
 
  event CommissionConfigUpdated(
     address indexed receiver,
@@ -30,55 +30,94 @@ contract PaymentCoreV1 is Context, PaymentV1Storage {
   );
 
 
- event CommissionWithdrawn(
+event CommissionWithdrawn(
     address indexed receiver,
     IERC20Upgradeable indexed token,
     uint256 amount 
 );
 
-  // initialised for upgradation usage
-  uint256[50] private __gap;
+    // initialised for upgradation usage
+    uint256[50] private __gap;
 
-  /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-  } 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+        constructor() {
+            _disableInitializers();
+    } 
 
   
-  function initialize(
-    address _rootAdmin,
-    IMerchantRegistry _merchantRegistry,
-    address _platformCommissionReceiver,
-    uint256 _platformCommissionPercentage
-    ) external initializer {
-        __Governance_init_unchained(_rootAdmin);
-        __paymentCore_init(
-            _merchantRegistry,
-            _platformCommissionReceiver,
-            _platformCommissionPercentage
-        );
-    }
+    function initialize(
+        address _rootAdmin,
+        IMerchantRegistry _merchantRegistry,
+        address _platformCommissionReceiver,
+        uint256 _platformCommissionPercentage
+        ) external initializer {
+            __Governance_init_unchained(_rootAdmin);
+            __paymentCore_init(
+                _merchantRegistry,
+                _platformCommissionReceiver,
+                _platformCommissionPercentage
+            );
+        }
 
     function __paymentCore_init(
         IMerchantRegistry _merchantRegistry,
         address _platformCommissionReceiver,
         uint256 _platformCommissionPercentage
-      ) internal onlyInitializing {
-          merchantRegistry_ = _merchantRegistry;
-          platformCommissionConfig_ = CommissionConfig(
-                _platformCommissionReceiver,
-                _platformCommissionPercentage
-         );
+        ) internal onlyInitializing {
+            merchantRegistry_ = _merchantRegistry;
+            _setCommissionPercentage(_platformCommissionPercentage);
+            _setCommissionReceiver(_platformCommissionReceiver);
     }
 
-  function setMaximumReward (uint256 _reward) external onlyOwner {
-      _checkAndRevert(MathUtils.validPercentage(_reward, 0, percentage_),"Invalid Percentage Input");
-      _checkAndRevert(_reward != operatorFees_.maxReward,"Same Reward exists");
 
-      _setMaxReward(_reward);
+  function setCommissionPercentage (uint256 _percentage) external onlyManager {
+      _checkAndRevertMessage(MathUtils.validPercentage(_percentage, 0, percentageMultiplier_),"Invalid Percentage Input");
+      _checkAndRevertMessage(_percentage != platformCommissionConfig_.percentage,"Same Percentage exists");
 
-      emit FeeUpdated(epochManager_.currentEpoch(), operatorFees_.minFee, _reward);
+      _setCommissionPercentage(_percentage);
+
+      emit CommissionConfigUpdated(platformCommissionConfig_.receiver, _percentage);
   }
+
+  function setCommissionReceiver (address _receiver) external onlyManager {
+      _checkAndRevertMessage(_receiver != address(0),"Receiver Cant be zero");
+      _checkAndRevertMessage(_receiver != platformCommissionConfig_.receiver,"Same Receiver exists");
+
+      _setCommissionReceiver(_receiver);
+
+      emit CommissionConfigUpdated(_receiver, platformCommissionConfig_.percentage);
+  }
+
+  function _setCommissionPercentage (uint256 _percentage) internal {
+      platformCommissionConfig_.percentage = _percentage;
+  }
+
+  function _setCommissionReceiver (address _receiver) internal {
+      platformCommissionConfig_.receiver = _receiver;
+  }
+
+function withdrawFromTreasury(
+    IERC20Upgradeable _token
+    ) external nonReentrant onlyManager {
+    
+    uint256 _amount = commissionBalances_[_token].balance;
+    address treasuryAddress_ = platformCommissionConfig_.receiver;
+    
+    _checkAndRevertMessage(_amount > 0, "No Balance to Withdraw");
+    _checkAndRevertMessage(treasuryAddress_ != address(0), "Platform Receiver not set");
+
+    commissionBalances_[_token].balance = 0;
+    commissionBalances_[_token].claimed += _amount;
+    
+
+    TokenUtils.pushTokens(_token,treasuryAddress_,_amount);
+
+    emit CommissionWithdrawn(
+        treasuryAddress_,
+        address(_token),
+        _amount
+    );
+}
 
 
   /**
