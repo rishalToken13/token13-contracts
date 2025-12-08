@@ -128,7 +128,30 @@ function payTx(
     uint256 amount_
   ) external nonReentrant payable { 
     
+    _checkAndRevertMessage(_isMerchantActive(merchantId_),"Inactive Merchant");
     _checkAndRevertMessage(_isTokenSupported(merchantId_, paymentToken_),"Unsupported Payment Token");
+
+    bool isTRX = paymentToken_ == address(0);
+
+    if (isTRX) {
+        _checkAndRevertMessage(msg.value == amount_,"Invalid TRX amount");
+        
+        
+    } else {
+        _checkAndRevertMessage(msg.value == 0,"Do not send TRX with token payment");
+
+
+        // Handle TRC20 payment
+        IERC20(paymentToken_).transferFrom(
+            msg.sender,
+            address(this),
+            amount_
+        );
+    }
+
+
+
+
 
 
     merchantRegistry_.validateMerchantToken(merchantId_, paymentToken_);
@@ -234,12 +257,18 @@ function payTx(
 
 
 
-  function _isTokenSupported(
+function _isTokenSupported(
     bytes32 merchantId_,
     IERC20Upgradeable token_
-  ) internal view returns(bool) {
+    ) internal view returns(bool) {
     return merchantRegistry_.isMerchantTokenSupported(merchantId_, token_);
-  }
+}
+
+function _isMerchantActive(
+    bytes32 merchantId_
+) internal view returns(bool) {
+    return merchantRegistry_.isMerchantActive(merchantId_);
+}
 
 
   /**

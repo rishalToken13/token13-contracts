@@ -18,6 +18,7 @@ contract MerchantV1Storage {
     */
     struct MerchantConfig {
         address fundReceiver;
+        bool registered;
         bool active;
         mapping(address => bool) supportedTokens;
     } 
