@@ -13,6 +13,7 @@ contract MerchantV1Storage {
       * @notice Configuration for a merchant.
       * @dev 
       * - `fundReceiver` is the address where collected funds are forwarded.  
+      * - `registered` indicates whether the merchant is registered in the system.
       * - `active` indicates whether the merchant is enabled.  
       * - `supportedTokens` maps token addresses to a boolean indicating whether the merchant accepts that token.
     */

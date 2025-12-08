@@ -104,8 +104,9 @@ contract MerchantRegistry is Context, MerchantV1Storage {
     address fundReceiver_,
   )external {
 
-    _checkAndRevertMessage((!merchants_[merchantId_].active && merchants_[merchantId_].fundReceiver == address(0)),"Invalid Percentage Input");
-    _checkAndRevertMessage(fundReceiver_ != address(0),"Invalid Percentage Input");
+    _checkAndRevertMessage(merchantId_ != bytes32(0), "Invalid merchantId");
+    _checkAndRevertMessage(fundReceiver_ != address(0), "Invalid receiver");
+    _checkAndRevertMessage(!merchants_[merchantId_].registered, "Merchant already registered");
 
     merchants_[merchantId].fundReceiver = fundReceiver;
     merchants_[merchantId].active = active;
@@ -129,6 +130,9 @@ contract MerchantRegistry is Context, MerchantV1Storage {
     bool active
   ) external {
 
+    _checkAndRevertMessage(merchants_[merchantId].registered, "Merchant not registered");
+    _checkAndRevertMessage(merchants_[merchantId].active != active, "Status unchanged");
+    
     merchants_[merchantId].active = active;
     emit MerchantStatusUpdated(merchantId, active);
   }
@@ -146,6 +150,11 @@ contract MerchantRegistry is Context, MerchantV1Storage {
     IERC20Upgradeable token,
     bool status
   ) external {
+
+    _checkAndRevertMessage(merchants_[merchantId].registered, "Merchant not registered");
+    _checkAndRevertMessage(address(token) != address(0), "Invalid token");
+    _checkAndRevertMessage(merchants_[merchantId].supportedTokens[address(token)] != status, "Status unchanged");
+
 
     merchants_[merchantId].supportedTokens[token] = status;
 
@@ -167,6 +176,11 @@ contract MerchantRegistry is Context, MerchantV1Storage {
     address newReceiver
   ) external {
 
+    _checkAndRevertMessage(merchants_[merchantId].registered, "Merchant not registered");
+    _checkAndRevertMessage(newReceiver != address(0), "Invalid receiver");
+    _checkAndRevertMessage(merchants_[merchantId].fundReceiver != newReceiver, "Receiver unchanged");
+    
+
      merchants_[merchantId].fundReceiver = newReceiver;
 
     emit MerchantReceiverAddressUpdated(
@@ -176,5 +190,41 @@ contract MerchantRegistry is Context, MerchantV1Storage {
   }
 
 
+  // -------------------------
+  // VIEW FUNCTIONS
+  // -------------------------
+
+  /**
+  * @notice Returns whether a specific token is supported for a merchant
+  */
+  function isMerchantTokenSupported(bytes32 merchantId, address token)
+      external
+      view
+      returns (bool)
+      {
+          return merchants_[merchantId].supportedTokens[token];
+      }
+
+  /**
+  * @notice Returns whether a merchant is active
+  */
+  function isMerchantActive(bytes32 merchantId)
+      external
+      view
+      returns (bool)
+      {
+          return merchants_[merchantId].active;
+      }
+
+  /**
+  * @notice Returns the merchant's fund receiver address
+  */
+  function getMerchantFundReceiver(bytes32 merchantId)
+      external
+      view
+      returns (address)
+      {
+          return merchants_[merchantId].fundReceiver; 
+      }
 
 }

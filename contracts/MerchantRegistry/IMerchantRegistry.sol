@@ -8,23 +8,34 @@ pragma solidity ^0.8.20;
 interface IMerchantRegistry {
 
     /**
-     * @notice Returns true if the merchant is registered.
-     * @param _merchant The merchant address being queried.
-     * @return _isRegistered True if the merchant is in the registry.
-     */
-    function isMerchant(address _merchant)
+        * @notice Checks whether a given token is supported for the specified merchant.
+        * @param merchantId The unique ID of the merchant.
+        * @param token The token address to check.
+        * @return True if the token is supported, otherwise false.
+    */
+    function isMerchantTokenSupported(bytes32 merchantId, address token)
         external
         view
-        returns (bool _isRegistered);
+        returns (bool);
 
     /**
-     * @notice Returns the payout (settlement) wallet for the merchant.
-     * @dev SHOULD revert if `_merchant` is not registered.
-     * @param _merchant The merchant whose payout wallet is requested.
-     * @return _payout The payout wallet address.
-     */
-    function getMerchantPayoutWallet(address _merchant)
+        * @notice Returns whether the merchant is currently active.
+        * @param merchantId The unique ID of the merchant.
+        * @return True if the merchant is active, otherwise false.
+    */
+    function isMerchantActive(bytes32 merchantId)
         external
         view
-        returns (address _payout);
+        returns (bool);
+
+    /**
+        * @notice Retrieves the payout receiver address for the merchant.
+        * @param merchantId The unique ID of the merchant.
+        * @return The address that receives merchant funds.
+    */
+    function getMerchantFundReceiver(bytes32 merchantId)
+        external
+        view
+        returns (address);
+
 }
