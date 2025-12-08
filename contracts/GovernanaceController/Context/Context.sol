@@ -10,11 +10,13 @@ import { GovernanceController } from "../Governance/Controller.sol";
 
 contract Context is GovernanceController {
 
-    /**
-     * @dev function to return the signer of the message
-     * @return signer of the message
-     */
+  // This variable will represents 100% while calculating percentage. 
+  uint256 constant internal percentageMultiplier_ = 10000;
 
+  /**
+    * @dev function to return the signer of the message
+    * @return signer of the message
+    */
   function _msgSender() internal override view returns (address) {
     address signer_ = msg.sender;
     return signer_;
