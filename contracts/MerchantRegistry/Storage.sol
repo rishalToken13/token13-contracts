@@ -3,8 +3,8 @@ pragma solidity 0.8.18;
 
 /**
  * @author  token13 Platform
- * @title   token13 Platform Storage Contract.
- * @dev     This contract defines the storage structure for merchants.  
+ * @title   token13 Platform Merchant Storage Contract.
+ * @dev     This contract defines the storage structure for Merchants.  
  */
 
 contract MerchantV1Storage {
@@ -14,8 +14,7 @@ contract MerchantV1Storage {
       * @dev 
       * - `fundReceiver` is the address where collected funds are forwarded.  
       * - `active` indicates whether the merchant is enabled.  
-      * - `supportedTokens` maps token addresses to a boolean indicating whether
-      *    the merchant accepts that token.
+      * - `supportedTokens` maps token addresses to a boolean indicating whether the merchant accepts that token.
     */
     struct MerchantConfig {
         address fundReceiver;
@@ -30,3 +29,5 @@ contract MerchantV1Storage {
   uint256[50] private __gap;
     
 }
+
+

@@ -7,7 +7,7 @@ import { MathUtils } from "../Utils/MathUtils.sol";
 import { MerchantV1Storage } from "./Storage.sol";
 
 /**
- * @author  token13 Platform
+ * @author  token13 Platform. 
  * @title   Merchant Registry Contract
  * @dev     Manages merchants: onboard, update status, receiver, token support.
  */
@@ -30,7 +30,6 @@ contract MerchantRegistry is Context, MerchantV1Storage {
     bytes32 indexed merchantId,
     address fundReceiver,
     bool active
-    
   );
 
 
@@ -43,8 +42,7 @@ contract MerchantRegistry is Context, MerchantV1Storage {
   event MerchantTokenUpdated(
     bytes32 indexed merchantId,
     address token,
-    bool status
-    
+    bool status  
   );
 
 
@@ -56,7 +54,6 @@ contract MerchantRegistry is Context, MerchantV1Storage {
   event MerchantStatusUpdated(
     bytes32 indexed merchantId,
     bool active
-    
   );
 
 
@@ -77,7 +74,7 @@ contract MerchantRegistry is Context, MerchantV1Storage {
   /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
-  } 
+    } 
 
   /**
   * @dev Initializes the Operator contract.
@@ -103,10 +100,12 @@ contract MerchantRegistry is Context, MerchantV1Storage {
   */
 
   function MerchantOnboard(
-    bytes32 merchantId,
-    address fundReceiver,
-    bool active
+    bytes32 merchantId_,
+    address fundReceiver_,
   )external {
+
+    _checkAndRevertMessage((!merchants_[merchantId_].active && merchants_[merchantId_].fundReceiver == address(0)),"Invalid Percentage Input");
+    _checkAndRevertMessage(fundReceiver_ != address(0),"Invalid Percentage Input");
 
     merchants_[merchantId].fundReceiver = fundReceiver;
     merchants_[merchantId].active = active;
@@ -144,7 +143,7 @@ contract MerchantRegistry is Context, MerchantV1Storage {
 
   function updateMerchanttokenStatus(
     bytes32 merchantId,
-    address token,
+    IERC20Upgradeable token,
     bool status
   ) external {
 

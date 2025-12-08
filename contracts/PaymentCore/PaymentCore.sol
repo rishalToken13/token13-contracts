@@ -96,133 +96,83 @@ event CommissionWithdrawn(
       platformCommissionConfig_.receiver = _receiver;
   }
 
-function withdrawFromTreasury(
+function withdrawFromCommissions(
     IERC20Upgradeable _token
     ) external nonReentrant onlyManager {
     
     uint256 _amount = commissionBalances_[_token].balance;
-    address treasuryAddress_ = platformCommissionConfig_.receiver;
+    address commissionReceiver_ = platformCommissionConfig_.receiver;
     
     _checkAndRevertMessage(_amount > 0, "No Balance to Withdraw");
-    _checkAndRevertMessage(treasuryAddress_ != address(0), "Platform Receiver not set");
+    _checkAndRevertMessage(commissionReceiver_ != address(0), "Platform Receiver not set");
 
     commissionBalances_[_token].balance = 0;
     commissionBalances_[_token].claimed += _amount;
     
 
-    TokenUtils.pushTokens(_token,treasuryAddress_,_amount);
+    TokenUtils.pushTokens(_token,commissionReceiver_,_amount);
 
     emit CommissionWithdrawn(
-        treasuryAddress_,
+        commissionReceiver_,
         address(_token),
         _amount
     );
 }
 
 
-  /**
-   * @dev Function to set min fee of all operators in chain.
-   * @notice This function will be called by the admin.
-   * @param _fee is the maximum reward that can operator hold.
-   */
-  function setMinFee (uint256 _fee) external onlyOwner {
-      _checkAndRevert(MathUtils.validPercentage(_fee, 0, percentage_),"Invalid Percentage Input");
-      _checkAndRevert(_fee != operatorFees_.minFee,"Same Reward exists");
+function payTx(
+    bytes32 merchantId_,
+    uint256 orderId_,
+    uint256 invoiceId_,
+    IERC20Upgradeable paymentToken_,
+    uint256 amount_
+  ) external nonReentrant payable { 
+    
+    _checkAndRevertMessage(_isTokenSupported(merchantId_, paymentToken_),"Unsupported Payment Token");
 
-      _setMinFee(_fee);
 
-      emit FeeUpdated(epochManager_.currentEpoch(), _fee, operatorFees_.maxReward);
+    merchantRegistry_.validateMerchantToken(merchantId_, paymentToken_);
+
+    // Transfer payment from payer to this contract
+    TokenUtils.pullTokens(paymentToken_, _msgSender(), amount_);
+
+    // Calculate platform commission
+    uint256 commissionAmount = MathUtils.calculatePercentage(
+        amount_,
+        platformCommissionConfig_.percentage,
+        percentageMultiplier_
+    );
+
+    // Update commission balance
+    commissionBalances_[paymentToken_].balance += commissionAmount;
+
+    // Calculate net amount to be sent to merchant
+    uint256 netAmount = amount_ - commissionAmount;
+
+    // Transfer net amount to merchant's fund receiver
+    address fundReceiver = merchantRegistry_.getMerchantFundReceiver(merchantId_);
+    TokenUtils.pushTokens(paymentToken_, fundReceiver, netAmount);
+
+    // Record the settlement details
+    settlements_[merchantId_][orderId_] = SettlementDetails({
+        paymentToken: paymentToken_,
+        orderId: orderId_,
+        amount: amount_,
+        timestamp: block.timestamp,
+        active: true
+    });
+
+    emit PaymentCompleted(
+        merchantId_,
+        orderId_,
+        invoiceId_,
+        paymentToken_,
+        amount_,
+        block.timestamp
+    );
   }
 
 
-  /**
-   * @dev Function to onboard operators to on-chain.
-   * @notice This function will be called by the admin.
-   * @param _operatorAddress is the address of the operator.
-   * @param _feeCut is the minimum fee that can operator hold.
-   * @param _rewardCut is the maximum earned reward that can operator hold.
-   * @param _fileHash is the IPFS hash representing the config metadata.
-   */
-  function onboardOperator(address _operatorAddress, uint256 _feeCut, uint256 _rewardCut,string memory _fileHash) 
-    external onlyManager {
-      _checkAndRevert(!_isEmptyString(_fileHash),"Filehash is required");
-      _checkAndRevert(_isEmptyString(operators_[_operatorAddress].fileHash),"Operator already exists");
-      _checkAndRevert(
-            MathUtils.validPercentage(_feeCut, operatorFees_.minFee, percentage_) && 
-            MathUtils.validPercentage(_rewardCut, 0, operatorFees_.maxReward),
-            "Invalid Percentage Input"
-        );
-      operators_[_operatorAddress] = OperatorNode(_feeCut, _rewardCut, _fileHash, true);
-
-      emit OperatorOnboarded(_operatorAddress, _feeCut, _rewardCut, _fileHash);
-  }
-
-  /**
-   * @dev Function to activate/de-activate operators in chain.
-   * @notice This function will be called by the admin.
-   * @param _operatorAddress is the address of the operator.
-   * @param _status is the new status of the operator.
-   */
-  function updateOperatorStatus(address _operatorAddress,bool _status) external onlyManager {
-    if(_status){
-      _checkAndRevert(!_isEmptyString(operators_[_operatorAddress].fileHash),"Operator does Not exists");
-      _checkAndRevert(!operators_[_operatorAddress].active,"Operator is already active");
-      operators_[_operatorAddress].active = true;
-    }
-    else {
-      _checkAndRevert(operators_[_operatorAddress].active,"Operator is not active");
-      operators_[_operatorAddress].active = false;
-    }
-
-    emit OperatorStatus(_operatorAddress, epochManager_.currentEpoch(), _status);
-  }
-
-
-  /**
-   * @dev Function to update the rewardCut of operator in chain.
-   * @notice This function only called by Onboarded Operators.
-   * @param _rewardCut is the maximum earned reward that can operator hold.
-   */
-  function updateOperatorRewardCut(uint256 _rewardCut) external {
-      address operator = _msgSender();
-      _checkAndRevert(operators_[operator].active,"Operator is not active");
-      _checkAndRevert((_rewardCut != operators_[operator].rewardCut),"Same Fees exists");
-      _checkAndRevert(
-          MathUtils.validPercentage(_rewardCut, 0, operatorFees_.maxReward),"Invalid Percentage Input"
-      );
-      operators_[operator].rewardCut = _rewardCut;
-      emit OperatorFeesUpdated(operator, epochManager_.currentEpoch(), operators_[operator].feeCut, _rewardCut);
-  }
-
-  /**
-   * @dev Function to update the feeCut of operator in chain.
-   * @notice This function only called by Onboarded Operators.
-   * @param _feeCut is the minimum fee that can operator hold.
-   */
-  function updateOperatorFeeCut(uint256 _feeCut) external {
-      address operator = _msgSender();
-      _checkAndRevert(operators_[operator].active,"Operator is not active");
-      _checkAndRevert((_feeCut != operators_[operator].feeCut),"Same Fees exists");
-      _checkAndRevert(
-          MathUtils.validPercentage(_feeCut, operatorFees_.minFee, percentage_),"Invalid Percentage Input"
-      );
-      operators_[operator].feeCut = _feeCut;
-      emit OperatorFeesUpdated(operator, epochManager_.currentEpoch(), _feeCut, operators_[operator].rewardCut);
-  }
-
-  /**
-   * @dev Function to update wether to Claim Reward for operator or Delegate it.
-   * @notice This function only called by Onboarded Operators.
-   * @param _claimReward is the boolean mentioning wether to claim the rewards.
-   */
-  function setClaimRewardStatus(bool _claimReward) external nonReentrant {
-      address operator = _msgSender();
-      _checkAndRevert(operators_[operator].active,"Operator is not active");
-      _checkAndRevert((claimRewards_[operator] != _claimReward),"Same Status Exists");
-      
-      claimRewards_[operator] = _claimReward;
-      emit OperatorClaimStatusUpdated(operator, epochManager_.currentEpoch(), claimRewards_[operator]);
-  }
 
   /**
    * @dev Function to get minimum fees that all operators can hold which is set by admin.
@@ -283,6 +233,15 @@ function withdrawFromTreasury(
   }
 
 
+
+  function _isTokenSupported(
+    bytes32 merchantId_,
+    IERC20Upgradeable token_
+  ) internal view returns(bool) {
+    return merchantRegistry_.isMerchantTokenSupported(merchantId_, token_);
+  }
+
+
   /**
   * @dev Internal Function to set epoch Manager to Platform Contract.
   * @param _epochManager pass address of the epoch Manager to get epoch manager contract instance.
@@ -316,8 +275,8 @@ function withdrawFromTreasury(
   }
 
 
-    function _isEmptyString(string memory str) internal pure returns (bool) {
-        bytes memory strBytes = bytes(str);
-        return strBytes.length == 0;
-    }
+function _isEmptyString(string memory str) internal pure returns (bool) {
+    bytes memory strBytes = bytes(str);
+    return strBytes.length == 0;
+}
 }
