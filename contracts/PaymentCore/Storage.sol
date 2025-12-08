@@ -41,6 +41,8 @@ contract PaymentV1Storage {
   /// Mapping to store the operators.
 mapping(bytes32 => mapping(uint256 => SettlementDetails)) internal settlements_;
 
+mapping(bytes32 => mapping(IERC20Upgradeable => uint256)) internal fundReceived_;
+
 // reserved storage space to allow for layout changes in the future.
 uint256[50] private __gap;
     

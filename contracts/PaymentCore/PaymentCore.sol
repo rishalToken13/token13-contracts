@@ -121,69 +121,39 @@ function withdrawFromCommissions(
 
 
 function payTx(
-    bytes32 merchantId_,
-    uint256 orderId_,
-    uint256 invoiceId_,
-    IERC20Upgradeable paymentToken_,
-    uint256 amount_
+    bytes32 _merchantId,
+    uint256 _orderId,
+    uint256 _invoiceId,
+    IERC20Upgradeable _paymentToken,
+    uint256 _amount
   ) external nonReentrant payable { 
-    
-    _checkAndRevertMessage(_isMerchantActive(merchantId_),"Inactive Merchant");
-    _checkAndRevertMessage(_isTokenSupported(merchantId_, paymentToken_),"Unsupported Payment Token");
+        
+    _checkAndRevertMessage(_amount > 0,"Invalid Amount");
+    _checkAndRevertMessage(_isMerchantActive(_merchantId),"Inactive Merchant");
+    _checkAndRevertMessage(_isTokenSupported(_merchantId, _paymentToken),"Unsupported Payment Token");
 
-    bool isTRX = paymentToken_ == address(0);
+    bool isTRX = _paymentToken == address(0);
 
     if (isTRX) {
-        _checkAndRevertMessage(msg.value == amount_,"Invalid TRX amount");
-        
-        
+        _checkAndRevertMessage(msg.value == _amount,"Invalid TRX amount");
+        (uint256 commission, uint256 merchantShare) = _settlementCalculation(_amount);
+        commissionBalances_[_paymentToken].balance += commission;
+        _setInvoiceDetails(_merchantId, _orderId, _invoiceId, _paymentToken, _amount);
+        fundReceived_[_merchantId][_paymentToken] += merchantShare;
+        address receiver = _fetchMerchantFundReceiver(_merchantId); 
+        (bool success, ) = payable(receiver).call{value: merchantShare}("");
+        _checkAndRevertMessage(success,"TRX Transfer failed");
+
     } else {
         _checkAndRevertMessage(msg.value == 0,"Do not send TRX with token payment");
-
-
-        // Handle TRC20 payment
-        IERC20(paymentToken_).transferFrom(
-            msg.sender,
-            address(this),
-            amount_
-        );
+        (uint256 commission, uint256 merchantShare) = _settlementCalculation(_amount);
+        commissionBalances_[_paymentToken].balance += commission;
+        _setInvoiceDetails(_merchantId, _orderId, _invoiceId, _paymentToken, _amount);
+        fundReceived_[_merchantId][_paymentToken] += merchantShare; 
+        address fundReceiver = _fetchMerchantFundReceiver(_merchantId); 
+        TokenUtils.pullTokens(_paymentToken, _msgSender(), _amount);
+        TokenUtils.pushTokens(_paymentToken, fundReceiver, merchantShare);
     }
-
-
-
-
-
-
-    merchantRegistry_.validateMerchantToken(merchantId_, paymentToken_);
-
-    // Transfer payment from payer to this contract
-    TokenUtils.pullTokens(paymentToken_, _msgSender(), amount_);
-
-    // Calculate platform commission
-    uint256 commissionAmount = MathUtils.calculatePercentage(
-        amount_,
-        platformCommissionConfig_.percentage,
-        percentageMultiplier_
-    );
-
-    // Update commission balance
-    commissionBalances_[paymentToken_].balance += commissionAmount;
-
-    // Calculate net amount to be sent to merchant
-    uint256 netAmount = amount_ - commissionAmount;
-
-    // Transfer net amount to merchant's fund receiver
-    address fundReceiver = merchantRegistry_.getMerchantFundReceiver(merchantId_);
-    TokenUtils.pushTokens(paymentToken_, fundReceiver, netAmount);
-
-    // Record the settlement details
-    settlements_[merchantId_][orderId_] = SettlementDetails({
-        paymentToken: paymentToken_,
-        orderId: orderId_,
-        amount: amount_,
-        timestamp: block.timestamp,
-        active: true
-    });
 
     emit PaymentCompleted(
         merchantId_,
@@ -195,117 +165,41 @@ function payTx(
     );
   }
 
+  function _setInvoiceDetails(bytes32 _merchantId, uint256 _orderId, uint256 _invoiceId, IERC20Upgradeable _paymentToken, uint256 _amount) private view returns (uint256 commission, uint256 merchantShare) {
+        settlements_[_merchantId][_invoiceId] = SettlementDetails({
+            paymentToken: _paymentToken,
+            orderId: _orderId,
+            amount: _amount,
+            timestamp: block.timestamp,
+            active: true
+        });
+    }
 
+   function _settlementCalculation(uint256 _amount) private view returns (uint256 commission, uint256 merchantShare) {
+        commission = _getShareAmount(_amount, platformCommissionConfig_.percentage, percentageMultiplier_);
+        merchantShare = _amount - commission;
+    }
 
-  /**
-   * @dev Function to get minimum fees that all operators can hold which is set by admin.
-   */
-  function getMinFee() external view returns(uint256) {
-    return operatorFees_.minFee;
-  }
+    function _getShareAmount(uint256 _amount,uint256 _share, uint256 _percentage) private pure returns (uint256) {
+        return MathUtils.percentageOf(_amount, _share, _percentage);
+    }
 
-  /**
-   * @dev Function to get maximum reward that all operators can hold which is set by admin.
-   */
-  function getMaxReward() external view returns(uint256) {
-    return operatorFees_.maxReward;
-  }
+    function _isTokenSupported(
+        bytes32 merchantId_,
+        IERC20Upgradeable token_
+        ) private view returns(bool) {
+        return merchantRegistry_.isMerchantTokenSupported(merchantId_, token_);
+    }
 
-  /**
-   * @dev Function to get minimum fee that specific operator willing to get.
-   */
-  function getOperatorFeeCut(address _operator) external view returns(uint256) {
-    return (operatorFees_.minFee > operators_[_operator].feeCut) ? 
-            operatorFees_.minFee : operators_[_operator].feeCut;
-  }
+    function _isMerchantActive(
+        bytes32 merchantId_
+    ) private view returns(bool) {
+        return merchantRegistry_.isMerchantActive(merchantId_);
+    }
 
-  /**
-   * @dev Function to get maximum reward that specific operator willing to get.
-   */
-  function getOperatorRewardCut(address _operator) external view returns(uint256) {
-    return (operatorFees_.maxReward < operators_[_operator].rewardCut) ? 
-            operatorFees_.maxReward : operators_[_operator].rewardCut;
-  }
-
-  /**
-   * @dev Function to get filehash of specific operator.
-   */
-  function getOperatorConfig(address _operator) external view returns(string memory){
-    return operators_[_operator].fileHash;
-  }
-
-  /**
-   * @dev Function is to check the operator is active or not.
-   */
-  function isOperatorActive(address _operator) external view returns (bool) {
-    return operators_[_operator].active;
-  }
-
-  /**
-   * @dev Function is to check the operator is claiming or not.
-   */
-  function isOperatorClaimingRewards(address _operator) external view returns (bool) {
-    return claimRewards_[_operator];
-  }
-
-  /**
-   * @dev Function is to get the epoch manager instance.
-   */
-  function getEpochManager() external view returns(IEpochManager) {
-    return epochManager_;
-  }
-
-
-
-function _isTokenSupported(
-    bytes32 merchantId_,
-    IERC20Upgradeable token_
-    ) internal view returns(bool) {
-    return merchantRegistry_.isMerchantTokenSupported(merchantId_, token_);
-}
-
-function _isMerchantActive(
-    bytes32 merchantId_
-) internal view returns(bool) {
-    return merchantRegistry_.isMerchantActive(merchantId_);
-}
-
-
-  /**
-  * @dev Internal Function to set epoch Manager to Platform Contract.
-  * @param _epochManager pass address of the epoch Manager to get epoch manager contract instance.
-  */
-  function _setEpoch(IEpochManager _epochManager) internal {
-    epochManager_ = _epochManager;
-  }
-
-  /**
-  * @dev Internal Function to set bcut address to Operator Contract.
-  * @param _bcutToken pass address of the Bcut Token to get Bcut Token contract instance.
-  */
-  function _setBcut(IERC20Upgradeable _bcutToken) internal {
-    bcutToken_ = _bcutToken;
-  }
-
-  /**
-  * @dev Internal Function to set minimum fees for all operators by admin.
-  * @param _fee is the minimum fee that must can operator hold.
-  */
-  function _setMinFee (uint256 _fee) internal {
-    operatorFees_.minFee = _fee;
-  }
-
-  /**
-  * @dev Internal Function to set maximum reward for all operators by admin.
-  * @param _reward is the maximum reward that must can operator hold.
-  */
-  function _setMaxReward (uint256 _reward) internal {
-    operatorFees_.maxReward = _reward;
-  }
-
-
-function _isEmptyString(string memory str) internal pure returns (bool) {
-    bytes memory strBytes = bytes(str);
-    return strBytes.length == 0;
-}
+    function _fetchMerchantFundReceiver(
+        bytes32 merchantId_
+    ) private view returns(address) {
+        return merchantRegistry_.getMerchantFundReceiver(merchantId_);
+    }
 }
