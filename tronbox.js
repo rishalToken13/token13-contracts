@@ -32,11 +32,18 @@ module.exports = {
   },
 
   // Compiler settings
-  solc: {
+  solc: [{
     version: "0.8.20",     // You can change this
     optimizer: {
       enabled: true,
       runs: 200
     }
-  }
+  },
+ {
+    version: "0.8.18",     // You can change this
+    optimizer: {
+      enabled: true,
+      runs: 200
+    }
+  }],
 };
