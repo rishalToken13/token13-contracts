@@ -11,7 +11,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 /**
  * @dev Contract module which allows children to implement an Governance
  * mechanism that can be triggered by an authorized account.
- * This Contract also inherits the Bitscrunch Storage.
+ * This Contract uses OpenZeppelin's UUPSUpgradeable, AccessControlUpgradeable, and ReentrancyGuardUpgradeable for upgradeability,
  *
  * This module is used through inheritance. It Creates a security for address and Token Transfer,
  * When the are addresses and Tokens are restricted to transfer by ADMIN's OR CONTRACT Owners.
