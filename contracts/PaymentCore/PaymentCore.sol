@@ -9,8 +9,8 @@ import { TokenUtils } from "../Utils/TokenUtils.sol";
 import { PaymentV1Storage } from "./Storage.sol";
 
 /**
- * @author  Platform, GmbH.
- * @title   Platform operator Contract.
+ * @author  token13 Platform
+ * @title   token13 Platform Payments Contract.
  * @dev     This Contracts holds operator configuration functionality.
  */
 
