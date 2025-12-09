@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
-import { Context } from "../GovernanaceController/Context/Context.sol";
+import { Context } from "../GovernanceController/Context/Context.sol";
 import { MerchantV1Storage } from "./Storage.sol";
 
   /**
