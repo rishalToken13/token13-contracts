@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.18;
-
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { IMerchantRegistry } from  "../MerchantRegistry/IMerchantRegistry.sol";
 
 
@@ -28,10 +26,10 @@ contract PaymentV1Storage {
   }
 
   /// Mapping to store the operators.
-  mapping(IERC20Upgradeable => CommissionBalance) internal commissionBalances_;
+  mapping(address => CommissionBalance) internal commissionBalances_;
   
   struct SettlementDetails{
-      IERC20Upgradeable paymentToken;
+      address paymentToken;
       uint256 orderId;
       uint256 amount;
       uint256 timestamp;
@@ -41,7 +39,7 @@ contract PaymentV1Storage {
   /// Mapping to store the operators.
 mapping(bytes32 => mapping(uint256 => SettlementDetails)) internal settlements_;
 
-mapping(bytes32 => mapping(IERC20Upgradeable => uint256)) internal fundReceived_;
+mapping(bytes32 => mapping(address => uint256)) internal fundReceived_;
 
 // reserved storage space to allow for layout changes in the future.
 uint256[50] private __gap;

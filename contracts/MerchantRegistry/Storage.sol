@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 /**
  * @author  token13 Platform
  * @title   token13 Platform Merchant Storage Contract.
- * @dev     This contract defines the storage structure for Merchants.  
+ * @dev     This contract defines the storage structure for Merchant Registry.  
  */
 
 contract MerchantV1Storage {

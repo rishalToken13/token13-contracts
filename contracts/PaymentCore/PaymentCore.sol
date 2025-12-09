@@ -2,8 +2,10 @@
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-import { Context } from "../GovernanceController/Context/Context.sol";
+import { Context } from "../GovernanaceController/Context/Context.sol";
+import { IMerchantRegistry } from "../MerchantRegistry/IMerchantRegistry.sol";
 import { MathUtils } from "../Utils/MathUtils.sol";
+import { TokenUtils } from "../Utils/TokenUtils.sol";
 import { PaymentV1Storage } from "./Storage.sol";
 
 /**
@@ -19,7 +21,7 @@ event PaymentDetected(
     bytes32 indexed merchantId,
     uint256 indexed orderId,
     uint256 indexed invoiceId,
-    IERC20Upgradeable paymentToken,
+    address paymentToken,
     uint256 amount,
     uint256 timestamp
 );
@@ -32,7 +34,7 @@ event PaymentDetected(
 
 event CommissionWithdrawn(
     address indexed receiver,
-    IERC20Upgradeable indexed token,
+    address indexed token,
     uint256 amount 
 );
 
@@ -96,26 +98,33 @@ event CommissionWithdrawn(
       platformCommissionConfig_.receiver = _receiver;
   }
 
-function withdrawFromCommissions(
-    IERC20Upgradeable _token
-    ) external nonReentrant onlyManager {
-    
-    uint256 _amount = commissionBalances_[_token].balance;
+
+function withdrawFromCommissions(address _token)
+    external
+    nonReentrant
+    onlyManager
+{
+    CommissionBalance storage cb = commissionBalances_[_token];
+    uint256 amount = cb.balance;
     address commissionReceiver_ = platformCommissionConfig_.receiver;
-    
-    _checkAndRevertMessage(_amount > 0, "No Balance to Withdraw");
-    _checkAndRevertMessage(commissionReceiver_ != address(0), "Platform Receiver not set");
 
-    commissionBalances_[_token].balance = 0;
-    commissionBalances_[_token].claimed += _amount;
-    
+    _checkAndRevertMessage(amount > 0, "No balance to withdraw");
+    _checkAndRevertMessage(
+        commissionReceiver_ != address(0),
+        "Platform receiver not set"
+    );
 
-    TokenUtils.pushTokens(_token,commissionReceiver_,_amount);
+    // Effects: update state before external calls
+    cb.balance = 0;
+    cb.claimed += amount;
+
+    // Interactions (native TRX or TRC20 decided inside TokenUtils)
+    TokenUtils.pushTokens(_token, commissionReceiver_, amount);
 
     emit CommissionWithdrawn(
         commissionReceiver_,
-        address(_token),
-        _amount
+        _token,
+        amount
     );
 }
 
@@ -124,48 +133,143 @@ function payTx(
     bytes32 _merchantId,
     uint256 _orderId,
     uint256 _invoiceId,
-    IERC20Upgradeable _paymentToken,
+    address _paymentToken,  // address(0) = TRX, otherwise TRC20
     uint256 _amount
-  ) external nonReentrant payable { 
-        
-    _checkAndRevertMessage(_amount > 0,"Invalid Amount");
-    _checkAndRevertMessage(_isMerchantActive(_merchantId),"Inactive Merchant");
-    _checkAndRevertMessage(_isTokenSupported(_merchantId, _paymentToken),"Unsupported Payment Token");
+) external payable nonReentrant {
+    _checkAndRevertMessage(_amount > 0, "Invalid amount");
+    _checkAndRevertMessage(_isMerchantActive(_merchantId), "Inactive merchant");
+    _checkAndRevertMessage(
+        _isTokenSupported(_merchantId, _paymentToken),
+        "Unsupported payment token"
+    );
 
-    bool isTRX = _paymentToken == address(0);
+    bool isTRX = (_paymentToken == address(0));
 
     if (isTRX) {
-        _checkAndRevertMessage(msg.value == _amount,"Invalid TRX amount");
-        (uint256 commission, uint256 merchantShare) = _settlementCalculation(_amount);
-        commissionBalances_[_paymentToken].balance += commission;
-        _setInvoiceDetails(_merchantId, _orderId, _invoiceId, _paymentToken, _amount);
-        fundReceived_[_merchantId][_paymentToken] += merchantShare;
-        address receiver = _fetchMerchantFundReceiver(_merchantId); 
-        (bool success, ) = payable(receiver).call{value: merchantShare}("");
-        _checkAndRevertMessage(success,"TRX Transfer failed");
+        // Native TRX payment
+        _checkAndRevertMessage(msg.value == _amount, "Invalid TRX amount");
 
-    } else {
-        _checkAndRevertMessage(msg.value == 0,"Do not send TRX with token payment");
-        (uint256 commission, uint256 merchantShare) = _settlementCalculation(_amount);
+        (uint256 commission, uint256 merchantShare) =
+            _settlementCalculation(_amount);
+
+        // Track platform commission in TRX bucket
         commissionBalances_[_paymentToken].balance += commission;
-        _setInvoiceDetails(_merchantId, _orderId, _invoiceId, _paymentToken, _amount);
-        fundReceived_[_merchantId][_paymentToken] += merchantShare; 
-        address fundReceiver = _fetchMerchantFundReceiver(_merchantId); 
+
+        // Record settlement for this invoice
+        _setInvoiceDetails(
+            _merchantId,
+            _orderId,
+            _invoiceId,
+            _paymentToken,
+            _amount
+        );
+
+        // Accounting for merchant funds (TRX)
+        fundReceived_[_merchantId][_paymentToken] += merchantShare;
+
+        // Payout merchant share
+        address receiver = _fetchMerchantFundReceiver(_merchantId);
+        TokenUtils.pushTokens(_paymentToken, receiver, merchantShare);
+    } else {
+        // TRC20 token payment
+        _checkAndRevertMessage(
+            msg.value == 0,
+            "Do not send TRX with token payment"
+        );
+
+        (uint256 commission, uint256 merchantShare) =
+            _settlementCalculation(_amount);
+
+        // Track platform commission in this token
+        commissionBalances_[_paymentToken].balance += commission;
+
+        // Record settlement for this invoice
+        _setInvoiceDetails(
+            _merchantId,
+            _orderId,
+            _invoiceId,
+            _paymentToken,
+            _amount
+        );
+
+        // Accounting for merchant funds (token)
+        fundReceived_[_merchantId][_paymentToken] += merchantShare;
+
+        // Pull full amount from payer into this contract
         TokenUtils.pullTokens(_paymentToken, _msgSender(), _amount);
+
+        // Send merchant share to merchant
+        address fundReceiver = _fetchMerchantFundReceiver(_merchantId);
         TokenUtils.pushTokens(_paymentToken, fundReceiver, merchantShare);
+        // Commission stays in contract; withdrawable via withdrawFromCommissions()
     }
 
-    emit PaymentDetected(
-        merchantId_,
-        orderId_,
-        invoiceId_,
-        paymentToken_,
-        amount_,
-        block.timestamp
-    );
-  }
+        emit PaymentDetected(
+            _merchantId,
+            _orderId,
+            _invoiceId,
+            _paymentToken,
+            _amount,
+            block.timestamp
+        );
+    }
 
-  function _setInvoiceDetails(bytes32 _merchantId, uint256 _orderId, uint256 _invoiceId, IERC20Upgradeable _paymentToken, uint256 _amount) private view returns (uint256 commission, uint256 merchantShare) {
+
+    function getPlatformCommissionConfig()
+        external
+        view
+        returns (address receiver, uint256 percentage)
+    {
+        CommissionConfig memory config = platformCommissionConfig_;
+        return (config.receiver, config.percentage);
+    }
+
+    function getCommissionBalance(address _token)
+        external
+        view
+        returns (uint256 balance, uint256 claimed)
+    {
+        CommissionBalance memory cb = commissionBalances_[_token];
+        return (cb.balance, cb.claimed);
+    }
+
+    function getSettlementDetails(bytes32 _merchantId, uint256 _invoiceId)
+        external
+        view
+        returns (
+            address paymentToken,
+            uint256 orderId,
+            uint256 amount,
+            uint256 timestamp,
+            bool active
+        )
+    {
+        SettlementDetails memory sd = settlements_[_merchantId][_invoiceId];
+        return (
+            sd.paymentToken,
+            sd.orderId,
+            sd.amount,
+            sd.timestamp,
+            sd.active
+        );
+    }
+
+    function getMerchantFundsReceived(bytes32 _merchantId, address _token)
+        external
+        view
+        returns (uint256)
+    {
+        return fundReceived_[_merchantId][_token];
+    }
+
+
+    function _setInvoiceDetails(
+        bytes32 _merchantId,
+        uint256 _orderId,
+        uint256 _invoiceId,
+        address _paymentToken,
+        uint256 _amount
+    ) private {
         settlements_[_merchantId][_invoiceId] = SettlementDetails({
             paymentToken: _paymentToken,
             orderId: _orderId,
@@ -174,6 +278,7 @@ function payTx(
             active: true
         });
     }
+
 
    function _settlementCalculation(uint256 _amount) private view returns (uint256 commission, uint256 merchantShare) {
         commission = _getShareAmount(_amount, platformCommissionConfig_.percentage, percentageMultiplier_);
@@ -185,8 +290,8 @@ function payTx(
     }
 
     function _isTokenSupported(
-        bytes32 merchantId_,
-        IERC20Upgradeable token_
+            bytes32 merchantId_,
+            address token_
         ) private view returns(bool) {
         return merchantRegistry_.isMerchantTokenSupported(merchantId_, token_);
     }

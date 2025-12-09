@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
-
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-import { Context } from "../GovernanceController/Context/Context.sol";
-import { MathUtils } from "../Utils/MathUtils.sol";
+import { Context } from "../GovernanaceController/Context/Context.sol";
 import { MerchantV1Storage } from "./Storage.sol";
 
-/**
- * @author  token13 Platform. 
- * @title   Merchant Registry Contract
- * @dev     Manages merchants: onboard, update status, receiver, token support.
- */
+  /**
+  * @author  token13 Platform. 
+  * @title   Merchant Registry Contract
+  * @dev     Manages merchants: onboard, update status, receiver, token support.
+  */
 
 contract MerchantRegistry is Context, MerchantV1Storage {
 
@@ -60,12 +57,15 @@ contract MerchantRegistry is Context, MerchantV1Storage {
   /**
     * @notice Emitted when a merchant's fund receiver address is updated.
     * @param merchantId Unique identifier for the merchant.
-    * @param fundReceiver New fund receiver address.
+    * @param oldReceiver Old fund receiver address.
+    * @param newReceiver New fund receiver address.
   */
   event MerchantReceiverAddressUpdated(
     bytes32 indexed merchantId,
-    address fundReceiver
+    address oldReceiver,
+    address newReceiver
   );
+    
 
 
   // initialised for upgradation usage
@@ -77,122 +77,139 @@ contract MerchantRegistry is Context, MerchantV1Storage {
     } 
 
   /**
-  * @dev Initializes the Operator contract.
-  * @param _rootAdmin is the address of Admin to have Admin privilege.
+    * @dev Initializes the Merchant Registry Contract.
+    * @param _rootAdmin is the address of Admin to have Admin privilege.
   */
   function initialize(
-    address _rootAdmin,
+    address _rootAdmin
     ) external initializer {
       __Governance_init_unchained(_rootAdmin);
     }
 
 
+ /**
+  * @notice Onboard a new merchant
+  * @param _merchantId merchant ID
+  * @param _fundReceiver fund receiving address
+ */
+function onboardMerchant(
+    bytes32 _merchantId,
+    address _fundReceiver
+) external {
+    _checkAndRevertMessage(_merchantId != bytes32(0), "Invalid merchantId");
+    _checkAndRevertMessage(_fundReceiver != address(0), "Invalid receiver");
+    _checkAndRevertMessage(
+        !merchants_[_merchantId].registered,
+        "Merchant already registered"
+    );
 
-  // -------------------------
-  // MERCHANT FUNCTIONS
-  // -------------------------
+    MerchantConfig storage merchant = merchants_[_merchantId];
 
-  /**
-    * @notice Onboard a merchant
-    * @param merchantId merchant unique bytes32 ID
-    * @param fundReceiver address receiving funds
-    * @param active initial active status
-  */
-
-  function MerchantOnboard(
-    bytes32 merchantId_,
-    address fundReceiver_,
-  )external {
-
-    _checkAndRevertMessage(merchantId_ != bytes32(0), "Invalid merchantId");
-    _checkAndRevertMessage(fundReceiver_ != address(0), "Invalid receiver");
-    _checkAndRevertMessage(!merchants_[merchantId_].registered, "Merchant already registered");
-
-    merchants_[merchantId].fundReceiver = fundReceiver;
-    merchants_[merchantId].active = active;
+    merchant.fundReceiver = _fundReceiver;
+    merchant.registered = true;
+    merchant.active = true;
+    // supportedTokens mapping is implicitly empty (all false)
 
     emit MerchantOnboarded(
-      merchantId,
-      fundReceiver,
-      active
+        _merchantId,
+        _fundReceiver,
+        true
     );
   }
+
       
 
   /**
-    * @notice Update merchant active/inactive status
-    * @param merchantId merchant ID
-    * @param active new status
+    * @notice Update merchant Live Status
+    * @param _merchantId merchant ID
+    * @param _active new status
   */
 
   function updateMerchantStatus(
-    bytes32 merchantId,
-    bool active
+    bytes32 _merchantId,
+    bool _active
   ) external {
 
-    _checkAndRevertMessage(merchants_[merchantId].registered, "Merchant not registered");
-    _checkAndRevertMessage(merchants_[merchantId].active != active, "Status unchanged");
+    _checkAndRevertMessage(merchants_[_merchantId].registered, "Merchant not registered");
+    _checkAndRevertMessage(merchants_[_merchantId].active != _active, "Same status exists");
     
-    merchants_[merchantId].active = active;
-    emit MerchantStatusUpdated(merchantId, active);
+    merchants_[_merchantId].active = _active;
+    emit MerchantStatusUpdated(_merchantId, _active);
   }
 
 
   /**
     * @notice Update whether token is supported for merchant
-    * @param merchantId merchant ID
-    * @param token token address
-    * @param status true/false support
+    * @param _merchantId merchant ID
+    * @param _token token address
+    * @param _status true/false support
   */
 
-  function updateMerchanttokenStatus(
-    bytes32 merchantId,
-    IERC20Upgradeable token,
-    bool status
+  function updateMerchantTokenStatus(
+    bytes32 _merchantId,
+    address _token,
+    bool _status
+) external {
+    MerchantConfig storage merchant = merchants_[_merchantId];
+
+    _checkAndRevertMessage(merchant.registered, "Merchant not registered");
+    _checkAndRevertMessage(merchant.active, "Merchant not active");
+    _checkAndRevertMessage(
+        merchant.supportedTokens[_token] != _status,
+        "Same status exists"
+    );
+
+    _validateTokenOnEnable(_token, _status);
+
+    merchant.supportedTokens[_token] = _status;
+
+    emit MerchantTokenUpdated(_merchantId, _token, _status);
+}
+
+  /**
+    * @notice Update merchant fund receiving wallet
+    * @param _merchantId merchant ID
+    * @param _newReceiver new fund receiver address
+  */ 
+    
+  function updateMerchantReceiverAddress(
+    bytes32 _merchantId,
+    address _newReceiver
   ) external {
 
-    _checkAndRevertMessage(merchants_[merchantId].registered, "Merchant not registered");
-    _checkAndRevertMessage(address(token) != address(0), "Invalid token");
-    _checkAndRevertMessage(merchants_[merchantId].supportedTokens[address(token)] != status, "Status unchanged");
+    _checkAndRevertMessage(merchants_[_merchantId].active, "Merchant not active");
+    _checkAndRevertMessage(_newReceiver != address(0), "Invalid receiver");
 
+    address oldReceiver = merchants_[_merchantId].fundReceiver;
+    _checkAndRevertMessage(oldReceiver != _newReceiver, "Receiver unchanged");
+    
+    merchants_[_merchantId].fundReceiver = _newReceiver;
 
-    merchants_[merchantId].supportedTokens[token] = status;
-
-    emit MerchantTokenUpdated(
-      merchantId,
-      token,
-      status
+    emit MerchantReceiverAddressUpdated(
+      _merchantId,
+      oldReceiver,
+      _newReceiver
     );
   }
 
   /**
-    * @notice Update merchant fund receiving wallet
-    * @param merchantId merchant ID
-    * @param newReceiver new fund receiver address
-  */ 
-    
-  function updateMerchantReceiverAddress(
-    bytes32 merchantId,
-    address newReceiver
-  ) external {
+    * @notice Validates token when enabling support
+    * @param _token token address
+    * @param _status true/false support
+  */
+  function _validateTokenOnEnable(address _token, bool _status) private view {
+    if (!_status) return;            // only when enabling
+    if (_token == address(0)) return; // TRX, no TRC20 check
 
-    _checkAndRevertMessage(merchants_[merchantId].registered, "Merchant not registered");
-    _checkAndRevertMessage(newReceiver != address(0), "Invalid receiver");
-    _checkAndRevertMessage(merchants_[merchantId].fundReceiver != newReceiver, "Receiver unchanged");
-    
+    _checkAndRevertMessage(_token.code.length > 0, "Token not contract");
 
-     merchants_[merchantId].fundReceiver = newReceiver;
-
-    emit MerchantReceiverAddressUpdated(
-      merchantId,
-      newReceiver
+    (bool ok1, ) = _token.staticcall(
+        abi.encodeWithSelector(0x70a08231, address(this)) // balanceOf(address)
     );
+    _checkAndRevertMessage(ok1, "Invalid TRC20 token");
   }
 
 
-  // -------------------------
-  // VIEW FUNCTIONS
-  // -------------------------
 
   /**
   * @notice Returns whether a specific token is supported for a merchant
@@ -226,5 +243,12 @@ contract MerchantRegistry is Context, MerchantV1Storage {
       {
           return merchants_[merchantId].fundReceiver; 
       }
+
+  /**
+  * @notice Helper To Generate Merchant Id from Name
+  */
+  function nameToId(string memory name) public pure returns (bytes32) {
+    return keccak256(abi.encodePacked(name));
+  }
 
 }

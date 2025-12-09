@@ -11,9 +11,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@openzeppelin/contracts-upgradeable": "^5.4.0",
+    "@openzeppelin/contracts-upgradeable": "4.9.6",
     "dotenv": "^17.2.3",
-    "solc": "^0.8.18",
+    "solc": "0.8.18",
     "tronbox": "^4.0.2",
     "tronweb": "^6.0.2"
   }

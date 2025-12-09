@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+
 /**
  * @dev Contract module which allows children to implement an Governance
  * mechanism that can be triggered by an authorized account.
@@ -57,8 +58,8 @@ abstract contract GovernanceController is Initializable, UUPSUpgradeable, Access
     }
 
     function transferOwnership(address _newOwner) public onlyOwner {
-        _checkAndRevert(_newOwner != address(0), "Governance:New Owner Cant be zero");
-        _checkAndRevert(_newOwner != msg.sender, "Governance:Admin Exists");
+        _checkAndRevertMessage(_newOwner != address(0), "Governance:New Owner Cant be zero");
+        _checkAndRevertMessage(_newOwner != msg.sender, "Governance:Admin Exists");
         pendingAdmin = _newOwner;
         currentAdmin = msg.sender;
 
@@ -79,12 +80,12 @@ abstract contract GovernanceController is Initializable, UUPSUpgradeable, Access
     }
 
     function addManager(address _manager) external onlyOwner {
-        _checkAndRevert(!hasRole(MANAGER_ROLE, _manager),"Governance:Role Exists");
+        _checkAndRevertMessage(!hasRole(MANAGER_ROLE, _manager),"Governance:Role Exists");
         _grantRole(MANAGER_ROLE, _manager);
     }
 
     function removeManager(address _manager) external onlyOwner {
-        _checkAndRevert(hasRole(MANAGER_ROLE, _manager),"Governance:Role Not Exists");
+        _checkAndRevertMessage(hasRole(MANAGER_ROLE, _manager),"Governance:Role Not Exists");
         _revokeRole(MANAGER_ROLE, _manager);
     }
 
@@ -104,7 +105,7 @@ abstract contract GovernanceController is Initializable, UUPSUpgradeable, Access
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     modifier onlyOwner() {
-        _checkAndRevert(
+        _checkAndRevertMessage(
             hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
             "Governance:RTO"
         );
@@ -112,12 +113,12 @@ abstract contract GovernanceController is Initializable, UUPSUpgradeable, Access
     }
 
     modifier onlyPendingAdmin() {
-        _checkAndRevert(_msgSender() == pendingAdmin,"Governance:Caller Not Authorized");
+        _checkAndRevertMessage(_msgSender() == pendingAdmin,"Governance:Caller Not Authorized");
         _;
     }
 
     modifier onlyManager() {
-        _checkAndRevert(
+        _checkAndRevertMessage(
             hasRole(MANAGER_ROLE, _msgSender()) || hasRole(DEFAULT_ADMIN_ROLE, _msgSender()),
             "Governance:RTO"
         );
