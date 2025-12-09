@@ -90,14 +90,6 @@ event CommissionWithdrawn(
       emit CommissionConfigUpdated(_receiver, platformCommissionConfig_.percentage);
   }
 
-  function _setCommissionPercentage (uint256 _percentage) internal {
-      platformCommissionConfig_.percentage = _percentage;
-  }
-
-  function _setCommissionReceiver (address _receiver) internal {
-      platformCommissionConfig_.receiver = _receiver;
-  }
-
 
 function withdrawFromCommissions(address _token)
     external
@@ -306,5 +298,13 @@ function payTx(
         bytes32 merchantId_
     ) private view returns(address) {
         return merchantRegistry_.getMerchantFundReceiver(merchantId_);
+    }
+
+    function _setCommissionPercentage (uint256 _percentage) internal {
+      platformCommissionConfig_.percentage = _percentage;
+    }
+
+    function _setCommissionReceiver (address _receiver) internal {
+        platformCommissionConfig_.receiver = _receiver;
     }
 }
