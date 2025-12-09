@@ -67,7 +67,7 @@ abstract contract GovernanceController is Initializable, UUPSUpgradeable, Access
     }
 
      function acceptOwnership() public onlyPendingAdmin {
-        _setupRole(DEFAULT_ADMIN_ROLE, pendingAdmin);
+        _grantRole(DEFAULT_ADMIN_ROLE, pendingAdmin);
 
         // Revoke the role for the previous admin if it's not address(0)
         if (currentAdmin != address(0)) {

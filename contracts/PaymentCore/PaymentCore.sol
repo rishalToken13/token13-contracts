@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
-
 import { Context } from "../GovernanceController/Context/Context.sol";
 import { IMerchantRegistry } from "../MerchantRegistry/IMerchantRegistry.sol";
 import { MathUtils } from "../Utils/MathUtils.sol";
