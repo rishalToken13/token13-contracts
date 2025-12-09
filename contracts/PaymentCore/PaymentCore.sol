@@ -192,7 +192,7 @@ contract PaymentCoreV1 is Context, PaymentV1Storage {
         uint256 _amount
     ) external payable nonReentrant {
         _checkAndRevertMessage(_amount > 0, "Invalid amount");
-        _checkAndRevertMessage(_isMerchantActive(_merchantId), "Inactive merchant");
+        _checkAndRevertMessage(_isMerchantActive(_merchantId), "Inactive merchant");  // To Do - Validate Invoice not paid before
         _checkAndRevertMessage(
             _isTokenSupported(_merchantId, _paymentToken),
             "Unsupported payment token"
